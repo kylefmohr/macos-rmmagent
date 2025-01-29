@@ -1,42 +1,41 @@
-name: Run tests
+name: Compile and release Mac agent
 
 on:
   push:
     branches:
       - "*"
-  pull_request:
-    branches:
-      - "*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: read
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    name: Run tests
-
+    runs-on: macos-latest
+    name: Build
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
           go-version: '1.20.13'
 
-      - name: Ensure linux agent compiles
+      - name: Compile
         run: |
-          ARCHS='amd64 386 arm64 arm'
-          for i in ${ARCHS}; do
-            env CGO_ENABLED=0 GOOS=linux GOARCH=${i} go build -ldflags "-s -w"
-          done
-      
-      - name: Ensure windows agent compiles
+          env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "-s -w" -o ./rmmagent-macos-amd64
+          env CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w" -o ./rmmagent-macos-arm64
+
+      - name: Create universal binary
         run: |
-          ARCHS='amd64 386'
-          for i in ${ARCHS}; do
-            env CGO_ENABLED=0 GOOS=windows GOARCH=${i} go build -ldflags "-s -w"
-          done
-      
-      - name: Ensure mac agent compiles
-        run: |
-          ARCHS='amd64 arm64'
-          for i in ${ARCHS}; do
-            env CGO_ENABLED=0 GOOS=darwin GOARCH=${i} go build -ldflags "-s -w"
-          done
+          lipo -create ./rmmagent-macos-amd64 ./rmmagent-macos-arm64 -o ./rmmagent-macos
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            ./rmmagent-macos
+          retention-days: 90
